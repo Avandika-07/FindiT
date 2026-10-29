@@ -1,0 +1,25 @@
+# secrets and local data
+.env
+backend/.env
+frontend/.env
+*.sqlite3
+backend/media/
+backend/st_media/
+
+# python
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.hypothesis/
+.schemathesis/
+
+# node
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# tooling
+.playwright-mcp/
+.DS_Store

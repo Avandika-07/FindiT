@@ -1,0 +1,1032 @@
+openapi: 3.0.3
+info:
+  title: FindiT API
+  version: 1.0.0
+  description: >
+    College lost and found. Students report lost and found items, the system
+    matches them, owners claim found items with proof, and every item is
+    tracked until it is returned.
+servers:
+  - url: /api
+tags:
+  - name: health
+  - name: locations
+  - name: items
+  - name: search
+  - name: matches
+  - name: claims
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      operationId: getHealth
+      summary: Service health
+      responses:
+        '200':
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+
+  /locations:
+    get:
+      tags: [locations]
+      operationId: listLocations
+      summary: All campus locations with their neighbours
+      responses:
+        '200':
+          description: Locations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Location'
+
+  /items:
+    get:
+      tags: [items]
+      operationId: listItems
+      summary: Browse items, newest first
+      parameters:
+        - $ref: '#/components/parameters/TypeFilter'
+        - $ref: '#/components/parameters/CategoryFilter'
+        - $ref: '#/components/parameters/StatusFilter'
+        - $ref: '#/components/parameters/LocationFilter'
+        - $ref: '#/components/parameters/DateFrom'
+        - $ref: '#/components/parameters/DateTo'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10000
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: A page of items
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    post:
+      tags: [items]
+      operationId: createItem
+      summary: Report a lost or found item
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItemCreate'
+      responses:
+        '201':
+          description: Item reported
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /items/{itemId}:
+    parameters:
+      - $ref: '#/components/parameters/ItemId'
+    get:
+      tags: [items]
+      operationId: getItem
+      summary: One item
+      responses:
+        '200':
+          description: The item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [items]
+      operationId: updateItem
+      summary: Edit or close your own item
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItemUpdate'
+      responses:
+        '200':
+          description: Updated item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [items]
+      operationId: deleteItem
+      summary: Delete your own item (only while it has no claims)
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /items/{itemId}/photo:
+    parameters:
+      - $ref: '#/components/parameters/ItemId'
+    post:
+      tags: [items]
+      operationId: uploadItemPhoto
+      summary: Attach or replace the photo of your own item
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [photo]
+              properties:
+                photo:
+                  type: string
+                  format: binary
+                  description: JPEG, PNG or WEBP, at most MAX_UPLOAD_MB (default 5 MB)
+            encoding:
+              photo:
+                contentType: image/jpeg, image/png, image/webp
+      responses:
+        '200':
+          description: Item with its new photo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/TooLarge'
+
+  /items/{itemId}/matches:
+    parameters:
+      - $ref: '#/components/parameters/ItemId'
+    get:
+      tags: [matches]
+      operationId: listItemMatches
+      summary: Possible matches for an item, strongest first
+      responses:
+        '200':
+          description: Matches with score breakdowns
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Match'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /items/{itemId}/claims:
+    parameters:
+      - $ref: '#/components/parameters/ItemId'
+    get:
+      tags: [claims]
+      operationId: listItemClaims
+      summary: Claims on an item (reporter and admins only)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Claims, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Claim'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [claims]
+      operationId: createClaim
+      summary: Claim a found item
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimCreate'
+      responses:
+        '201':
+          description: Claim submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Claim'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /search:
+    get:
+      tags: [search]
+      operationId: searchItems
+      summary: Typo-tolerant ranked search with match explanations
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+        - $ref: '#/components/parameters/TypeFilter'
+        - $ref: '#/components/parameters/CategoryFilter'
+        - $ref: '#/components/parameters/StatusFilter'
+        - $ref: '#/components/parameters/LocationFilter'
+        - $ref: '#/components/parameters/DateFrom'
+        - $ref: '#/components/parameters/DateTo'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: Ranked results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /claims/{claimId}:
+    parameters:
+      - $ref: '#/components/parameters/ClaimId'
+    get:
+      tags: [claims]
+      operationId: getClaim
+      summary: One claim (claimant, item reporter, or admin)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The claim
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Claim'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /claims/{claimId}/verify:
+    parameters:
+      - $ref: '#/components/parameters/ClaimId'
+    post:
+      tags: [claims]
+      operationId: verifyClaim
+      summary: Approve a pending claim and issue a handover code
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimDecision'
+      responses:
+        '200':
+          description: Claim verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Claim'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /claims/{claimId}/reject:
+    parameters:
+      - $ref: '#/components/parameters/ClaimId'
+    post:
+      tags: [claims]
+      operationId: rejectClaim
+      summary: Reject a pending claim
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimDecision'
+      responses:
+        '200':
+          description: Claim rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Claim'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /claims/{claimId}/handover:
+    parameters:
+      - $ref: '#/components/parameters/ClaimId'
+    post:
+      tags: [claims]
+      operationId: completeHandover
+      summary: Confirm the handover with the claimant's code
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HandoverRequest'
+      responses:
+        '200':
+          description: Item handed over
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Claim'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/Locked'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  parameters:
+    ItemId:
+      name: itemId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 2147483647
+    ClaimId:
+      name: claimId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 2147483647
+    TypeFilter:
+      name: type
+      in: query
+      schema:
+        $ref: '#/components/schemas/ItemType'
+    CategoryFilter:
+      name: category
+      in: query
+      schema:
+        $ref: '#/components/schemas/Category'
+    StatusFilter:
+      name: status
+      in: query
+      schema:
+        $ref: '#/components/schemas/ItemStatus'
+    LocationFilter:
+      name: location_id
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 2147483647
+    DateFrom:
+      name: date_from
+      in: query
+      schema:
+        type: string
+        format: date
+    DateTo:
+      name: date_to
+      in: query
+      schema:
+        type: string
+        format: date
+
+  responses:
+    BadRequest:
+      description: The request is invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing or expired token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Not allowed for this user
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Not allowed in the current state
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    TooLarge:
+      description: File is too large
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Locked:
+      description: Too many wrong handover codes; the claim is locked
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Machine-readable code, e.g. validation_error, not_found
+            message:
+              type: string
+              description: Plain-English explanation of what went wrong
+            fields:
+              type: object
+              description: Per-field messages for validation errors
+              additionalProperties:
+                type: string
+
+    ItemType:
+      type: string
+      enum: [LOST, FOUND]
+
+    ItemStatus:
+      type: string
+      enum: [OPEN, MATCHED, CLAIM_PENDING, RETURNED, EXPIRED, CLOSED]
+
+    ClaimStatus:
+      type: string
+      enum: [PENDING, VERIFIED, REJECTED, HANDED_OVER]
+
+    Category:
+      type: string
+      minLength: 2
+      maxLength: 30
+      description: >
+        A built-in category (Phone, Earphones, Wallet, ID card, Keys, Bag, Bottle, Laptop,
+        Charger, Watch, Spectacles, Calculator, Books and notes, Umbrella, Jewellery, Clothing,
+        Other) or a new kind of item. On create, a name that isn't known yet is added as a new
+        category; matching is case-insensitive and the stored spelling is returned.
+
+    LocationRef:
+      type: object
+      additionalProperties: false
+      required: [id, name, zone]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        zone:
+          type: string
+
+    Location:
+      type: object
+      additionalProperties: false
+      required: [id, name, zone, neighbor_ids]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        zone:
+          type: string
+        neighbor_ids:
+          type: array
+          items:
+            type: integer
+
+    UserRef:
+      type: object
+      additionalProperties: false
+      required: [id, display_name]
+      properties:
+        id:
+          type: integer
+        display_name:
+          type: string
+          description: First name only
+
+    Item:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - type
+        - title
+        - description
+        - category
+        - color
+        - brand
+        - location
+        - event_date
+        - photo_url
+        - photo_blurred
+        - secret_question
+        - status
+        - reporter
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+        type:
+          $ref: '#/components/schemas/ItemType'
+        title:
+          type: string
+        description:
+          type: string
+        category:
+          $ref: '#/components/schemas/Category'
+        color:
+          type: string
+          nullable: true
+        brand:
+          type: string
+          nullable: true
+        location:
+          $ref: '#/components/schemas/LocationRef'
+        event_date:
+          type: string
+          format: date
+          description: Day the item was lost or found
+        photo_url:
+          type: string
+          nullable: true
+          description: Blurred copy unless the viewer may see the clear photo
+        photo_blurred:
+          type: boolean
+        secret_question:
+          type: string
+          nullable: true
+          description: Found items only. The answer is never returned.
+        status:
+          $ref: '#/components/schemas/ItemStatus'
+        reporter:
+          $ref: '#/components/schemas/UserRef'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ItemPage:
+      type: object
+      additionalProperties: false
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Item'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    ItemCreate:
+      oneOf:
+        - $ref: '#/components/schemas/LostItemCreate'
+        - $ref: '#/components/schemas/FoundItemCreate'
+      discriminator:
+        propertyName: type
+        mapping:
+          LOST: '#/components/schemas/LostItemCreate'
+          FOUND: '#/components/schemas/FoundItemCreate'
+
+    LostItemCreate:
+      type: object
+      additionalProperties: false
+      required: [type, title, category, location_id, event_date]
+      properties:
+        type:
+          type: string
+          enum: [LOST]
+        title:
+          $ref: '#/components/schemas/Title'
+        description:
+          $ref: '#/components/schemas/Description'
+        category:
+          $ref: '#/components/schemas/Category'
+        color:
+          $ref: '#/components/schemas/Color'
+        brand:
+          $ref: '#/components/schemas/Brand'
+        location_id:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+        event_date:
+          type: string
+          format: date
+
+    FoundItemCreate:
+      type: object
+      additionalProperties: false
+      required: [type, title, category, location_id, event_date, secret_question, secret_answer]
+      properties:
+        type:
+          type: string
+          enum: [FOUND]
+        title:
+          $ref: '#/components/schemas/Title'
+        description:
+          $ref: '#/components/schemas/Description'
+        category:
+          $ref: '#/components/schemas/Category'
+        color:
+          $ref: '#/components/schemas/Color'
+        brand:
+          $ref: '#/components/schemas/Brand'
+        location_id:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+        event_date:
+          type: string
+          format: date
+        secret_question:
+          type: string
+          minLength: 5
+          maxLength: 160
+          pattern: '\S'
+        secret_answer:
+          type: string
+          minLength: 1
+          maxLength: 80
+          pattern: '\S'
+
+    ItemUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title:
+          $ref: '#/components/schemas/Title'
+        description:
+          $ref: '#/components/schemas/Description'
+        color:
+          $ref: '#/components/schemas/Color'
+        brand:
+          $ref: '#/components/schemas/Brand'
+        location_id:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+        event_date:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [CLOSED]
+          description: Close your own open or matched item
+
+    Title:
+      type: string
+      minLength: 3
+      maxLength: 80
+      pattern: '\S'
+    Description:
+      type: string
+      maxLength: 1000
+    Color:
+      type: string
+      nullable: true
+      maxLength: 30
+    Brand:
+      type: string
+      nullable: true
+      maxLength: 40
+
+    MatchBreakdown:
+      type: object
+      additionalProperties: false
+      required: [category, text, color, brand, location, time]
+      properties:
+        category:
+          type: integer
+          minimum: 0
+          maximum: 25
+        text:
+          type: integer
+          minimum: 0
+          maximum: 30
+        color:
+          type: integer
+          minimum: 0
+          maximum: 10
+        brand:
+          type: integer
+          minimum: 0
+          maximum: 10
+        location:
+          type: integer
+          minimum: 0
+          maximum: 15
+        time:
+          type: integer
+          minimum: 0
+          maximum: 10
+
+    Match:
+      type: object
+      additionalProperties: false
+      required: [id, score, breakdown, reasons, item, created_at]
+      properties:
+        id:
+          type: integer
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        breakdown:
+          $ref: '#/components/schemas/MatchBreakdown'
+        reasons:
+          type: array
+          description: Plain-English reasons, e.g. "Found 1 place away"
+          items:
+            type: string
+        item:
+          $ref: '#/components/schemas/Item'
+        created_at:
+          type: string
+          format: date-time
+
+    MatchReason:
+      type: object
+      additionalProperties: false
+      required: [query_term, matched_term, method]
+      properties:
+        query_term:
+          type: string
+        matched_term:
+          type: string
+        method:
+          type: string
+          enum: [exact, synonym, prefix, sounds_like, typo]
+
+    SearchHit:
+      type: object
+      additionalProperties: false
+      required: [item, score, reasons]
+      properties:
+        item:
+          $ref: '#/components/schemas/Item'
+        score:
+          type: number
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/MatchReason'
+
+    SearchResponse:
+      type: object
+      additionalProperties: false
+      required: [query, corrected_query, total, results]
+      properties:
+        query:
+          type: string
+        corrected_query:
+          type: string
+          nullable: true
+          description: Set when nothing matched and a "did you mean" query was used
+        total:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchHit'
+
+    Claim:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - item
+        - claimant
+        - proof_text
+        - proof_photo_url
+        - answer_score
+        - photo_similarity
+        - status
+        - decision_note
+        - handover_code
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+        item:
+          $ref: '#/components/schemas/Item'
+        claimant:
+          $ref: '#/components/schemas/UserRef'
+        proof_text:
+          type: string
+        proof_photo_url:
+          type: string
+          nullable: true
+        answer_score:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
+          description: Secret answer similarity. Shown to reviewers only.
+        photo_similarity:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
+          description: Proof photo similarity. Shown to reviewers only.
+        status:
+          $ref: '#/components/schemas/ClaimStatus'
+        decision_note:
+          type: string
+          nullable: true
+        handover_code:
+          type: string
+          nullable: true
+          description: Shown to the claimant only, once the claim is verified
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ClaimCreate:
+      type: object
+      additionalProperties: false
+      required: [proof_text, secret_answer]
+      properties:
+        proof_text:
+          type: string
+          minLength: 10
+          maxLength: 1000
+          pattern: '\S'
+        secret_answer:
+          type: string
+          minLength: 1
+          maxLength: 80
+          pattern: '\S'
+
+    ClaimDecision:
+      type: object
+      additionalProperties: false
+      required: [note]
+      properties:
+        note:
+          type: string
+          minLength: 3
+          maxLength: 500
+          pattern: '\S'
+
+    HandoverRequest:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code:
+          type: string
+          pattern: '^[0-9]{6}$'

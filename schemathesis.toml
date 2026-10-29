@@ -1,0 +1,17 @@
+# Schemathesis picks this file up automatically when run from the repo root.
+#   schemathesis run openapi.yaml --url http://127.0.0.1:8000/api -H "Authorization: Bearer <token>"
+
+# Generates real JPEG/PNG/WEBP bytes for the photo upload instead of random bytes.
+hooks = "schemathesis_hooks"
+
+# A wrong handover code is a deliberate 400 (the business rule), even though the
+# code itself is well-formed according to the schema.
+[[operations]]
+include-operation-id = "completeHandover"
+checks.positive_data_acceptance.expected-statuses = ["2xx", "400", "401", "403", "404", "409", "429"]
+
+# A lost/found date in the future is rejected with 400 ("Pick today or an earlier day").
+# JSON Schema cannot express "not after today", so the generator can produce such dates.
+[[operations]]
+include-operation-id-regex = "^(createItem|updateItem)$"
+checks.positive_data_acceptance.expected-statuses = ["2xx", "400", "401", "403", "404", "409", "429"]
